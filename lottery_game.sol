@@ -118,8 +118,8 @@ contract myToken is ERC20Interface, SafeMath{
     }
 }
 
-contract Lottery {
-    address public owner;
+contract Lottery {  //建立合約
+    address public owner;       //
     uint public ticketPrice;
     uint public pool;
     uint public minimumPlayers;
@@ -129,14 +129,14 @@ contract Lottery {
     mapping(address => uint) public balances;   //用來判斷是否領過錢了
     mapping(address => bool) public hasTicket;
 
-    modifier onlyOwner {
+    modifier onlyOwner {        //用modifier修飾函數，讓只有合約擁有者可以調用此函數
         require(msg.sender == owner, "Only the owner can call this function.");
         _;
     }
 
-    constructor() {
-        owner = msg.sender;
-        ticketPrice = 100;
+    constructor() {             //建構函數
+        owner = msg.sender;     //合約的擁有者==msg.sender/Banker
+        ticketPrice = 100;      
         pool = 0;
         minimumPlayers = 2;
         lotteryOpen = false;
@@ -145,7 +145,7 @@ contract Lottery {
 
     function faucet() public {
         require(balances[msg.sender] == 0, "You have already received tokens.");
-        balances[msg.sender] += 500;
+        balances[msg.sender] += 500;            //這邊應該要是申請者的錢+500
         require(block.timestamp > lotteryEndTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
     }
 
@@ -162,14 +162,15 @@ contract Lottery {
         }
     }
 
-    function chooseWinner() public onlyOwner {
+    function Winner() public onlyOwner {
         require(block.timestamp > lotteryEndTime, "The lottery is still open.");
         require(players.length >= minimumPlayers, "There are not enough players.");
         uint winningIndex = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, players))) % players.length;
         address winner = players[winningIndex];
         balances[winner] += pool * 9 / 10;
-        pool = pool * 1 / 10;
+        balances[msg.sender] = pool * 1 / 10;
         lotteryOpen = false;
+        pool=0;
         hasTicket[winner] = false;
         delete players;
     }
