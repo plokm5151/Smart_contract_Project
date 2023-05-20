@@ -57,7 +57,11 @@ contract myToken is ERC20Interface, SafeMath{
     uint public minimumPlayers;
     bool public lotteryOpen;
     uint public lotteryEndTime;
+    uint public lastFaucetTime;
+    uint public lastWinnerTime;
+    address public lastFaucetAddress;
     address[] public players;
+    address public Banker;
 
 
     mapping(address => uint256) public ticketCount;
@@ -92,16 +96,26 @@ contract myToken is ERC20Interface, SafeMath{
         lotteryOpen = false;
         lotteryEndTime = 0;
         ticket=0;
+        Banker=msg.sender;
+        lastFaucetAddress = address(0x0);
+        lastWinnerTime = 0;
     }
 
-
+    function whoIsBanker() public view returns(address){
+        return Banker;
+    }
 
     function faucet() public {
         require(balanceOf[msg.sender] == 0, "You have already received tokens.");
-        balanceOf[msg.sender] += 500;            //這邊應該要是申請者的錢+500
+        if(lastFaucetAddress == msg.sender){
+            require(block.timestamp > lastFaucetTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
+        }
+        balanceOf[msg.sender] += 500;
         _totalSupply += 500;
+        lastFaucetTime = block.timestamp;
+        lastFaucetAddress = msg.sender;
         emit Transfer(address(0), msg.sender, 500);
-        require(block.timestamp > lotteryEndTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
+        //require(block.timestamp > lotteryEndTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
     }
 
     // implement mandatory rules
@@ -157,11 +171,14 @@ contract myToken is ERC20Interface, SafeMath{
     function buyTicket() public {
         require(balanceOf[msg.sender] >= ticketPrice, "You don't have enough tokens.");
         //require(!hasTicket[msg.sender], "You already have a ticket.");
+        require(msg.sender != Banker);
         balanceOf[msg.sender] -= ticketPrice;
+        if(!hasTicket[msg.sender]){
+            players.length+1;
+            players.push(msg.sender);
+        }
         hasTicket[msg.sender] = true;
         ticketCount[msg.sender]++;  //增加玩家的票數
-
-        players.push(msg.sender);
         pool += ticketPrice;
         if (players.length >= minimumPlayers && !lotteryOpen) {
             lotteryOpen = true;
@@ -169,7 +186,7 @@ contract myToken is ERC20Interface, SafeMath{
         }
     }
 
-    function Winner() public onlyOwner {
+    /*function Winner() public onlyOwner {
         require(block.timestamp > lotteryEndTime, "The lottery is still open.");
         require(players.length >= minimumPlayers, "There are not enough players.");
         uint winningIndex = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, players))) % players.length;
@@ -180,6 +197,49 @@ contract myToken is ERC20Interface, SafeMath{
         pool=0;
         hasTicket[winner] = false;
         delete players;
+    }*/
+
+    function winner() public onlyOwner returns(address){
+        //require(block.timestamp > lotteryEndTime, "The lottery is still open .");
+        require(players.length >= minimumPlayers, "There are not enough players.");
+        if(lastWinnerTime!=0){
+            require(block.timestamp > lastWinnerTime + 180, "Can not choose the winner again whthin 180 seconds");
+        }
+        
+        //計算票數
+        uint totalTickets = 0;
+        for(uint i = 0; i< players.length; i++){
+            totalTickets += ticketCount[players[i]];
+        }
+
+        //生成隨機數
+        uint randomNumber = random();
+
+        //根據隨機數根票數計算獲勝者
+        uint winningIndex = randomNumber % totalTickets;
+        uint accumulatedTickets = 0;
+        address winner;
+        
+        for(uint i = 0;i < players.length; i++){
+            accumulatedTickets += ticketCount[players[i]];
+            if(winningIndex < accumulatedTickets){
+                winner = players[i];
+                break;
+            }
+        }
+
+        //將奬池分配給獲勝者
+        uint winnings = pool *9/10;
+        balanceOf[winner] += winnings;
+        balanceOf[msg.sender] += pool - winnings;
+
+        //重置彩票遊戲
+        lotteryOpen = false;
+        pool = 0;
+        hasTicket[winner] = false;
+        lastWinnerTime = block.timestamp;
+        delete players;
+        return winner;
     }
 
     function getPlayers() public view returns (address[] memory) {
