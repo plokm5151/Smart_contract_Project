@@ -50,9 +50,28 @@ contract myToken is ERC20Interface, SafeMath{
     string public symbol;
     uint8 public decimals;
     uint256 public _totalSupply;
+    address public owner;
+    uint public ticketPrice;
+    uint public ticket;
+    uint public pool;
+    uint public minimumPlayers;
+    bool public lotteryOpen;
+    uint public lotteryEndTime;
+    address[] public players;
 
+
+    mapping(address => uint256) public ticketCount;
     mapping(address => uint256) public override balanceOf;  //將address用mapping的方式映射到uint256上，之後使用陣列就可以輸入address輸出uint256型別了
     mapping(address => mapping(address => uint256)) allowed;        //用來儲存tokenown對於spender的授權金額
+    //mapping(address => uint) public balances;   //用來判斷是否領過錢了
+    mapping(address => bool) public hasTicket;
+
+    modifier onlyOwner {        //用modifier修飾函數，讓只有合約擁有者可以調用此函數
+        require(msg.sender == owner, "Only the owner can call this function.");
+        _;
+    }
+    
+    
 
     constructor()
     {
@@ -64,6 +83,25 @@ contract myToken is ERC20Interface, SafeMath{
         _totalSupply = 0;
         balanceOf[msg.sender] = _totalSupply;        //nsg是一種全域變數，代表當前的交易訊息，這邊也就是交易訊息的sender擁有的餘額==totalSupply
         emit Transfer(address(0), msg.sender, _totalSupply);       //emit是一種使function立即生效的指令
+        
+        owner = msg.sender;     //合約的擁有者==msg.sender/Banker
+        ticketPrice = 100;
+        ticket= 0;      
+        pool = 0;
+        minimumPlayers = 2;
+        lotteryOpen = false;
+        lotteryEndTime = 0;
+        ticket=0;
+    }
+
+
+
+    function faucet() public {
+        require(balanceOf[msg.sender] == 0, "You have already received tokens.");
+        balanceOf[msg.sender] += 500;            //這邊應該要是申請者的錢+500
+        _totalSupply += 500;
+        emit Transfer(address(0), msg.sender, 500);
+        require(block.timestamp > lotteryEndTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
     }
 
     // implement mandatory rules
@@ -77,7 +115,6 @@ contract myToken is ERC20Interface, SafeMath{
     //{
     //    return balances[tokenOwner];        //接收一個地址之後回傳那個地址剩下的餘額
     //}
-
     function transfer(address to, uint tokens) public override returns (bool success)   //
     {
         balanceOf[msg.sender] = safeSub(balanceOf[msg.sender], tokens);       //讓msg.sender的balances運行減法，減去送出去的tokens
@@ -107,53 +144,23 @@ contract myToken is ERC20Interface, SafeMath{
         return true;
     }
 
-    function createTokens(uint tokens) external{
-        balanceOf[msg.sender] += tokens;
-        _totalSupply += tokens;
-        emit Transfer(address(0), msg.sender, tokens);
-    }
+    //function createTokens(uint tokens) external{
+     //   balanceOf[msg.sender] += tokens;
+     //   _totalSupply += tokens;
+    //    emit Transfer(address(0), msg.sender, tokens);
+    //}
 
     function random() private view returns (uint){
         return uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender)));
     }
-}
-
-contract Lottery {  //建立合約
-    address public owner;       //
-    uint public ticketPrice;
-    uint public pool;
-    uint public minimumPlayers;
-    bool public lotteryOpen;
-    uint public lotteryEndTime;
-    address[] public players;
-    mapping(address => uint) public balances;   //用來判斷是否領過錢了
-    mapping(address => bool) public hasTicket;
-
-    modifier onlyOwner {        //用modifier修飾函數，讓只有合約擁有者可以調用此函數
-        require(msg.sender == owner, "Only the owner can call this function.");
-        _;
-    }
-
-    constructor() {             //建構函數
-        owner = msg.sender;     //合約的擁有者==msg.sender/Banker
-        ticketPrice = 100;      
-        pool = 0;
-        minimumPlayers = 2;
-        lotteryOpen = false;
-        lotteryEndTime = 0;
-    }
-
-    function faucet() public {
-        require(balances[msg.sender] == 0, "You have already received tokens.");
-        balances[msg.sender] += 500;            //這邊應該要是申請者的錢+500
-        require(block.timestamp > lotteryEndTime + 30 seconds, "You can only receive tokens once every 30 seconds.");
-    }
 
     function buyTicket() public {
-        require(balances[msg.sender] >= ticketPrice, "You don't have enough tokens.");
-        require(!hasTicket[msg.sender], "You already have a ticket.");
-        balances[msg.sender] -= ticketPrice;
+        require(balanceOf[msg.sender] >= ticketPrice, "You don't have enough tokens.");
+        //require(!hasTicket[msg.sender], "You already have a ticket.");
+        balanceOf[msg.sender] -= ticketPrice;
         hasTicket[msg.sender] = true;
+        ticketCount[msg.sender]++;  //增加玩家的票數
+
         players.push(msg.sender);
         pool += ticketPrice;
         if (players.length >= minimumPlayers && !lotteryOpen) {
@@ -167,8 +174,8 @@ contract Lottery {  //建立合約
         require(players.length >= minimumPlayers, "There are not enough players.");
         uint winningIndex = uint(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, players))) % players.length;
         address winner = players[winningIndex];
-        balances[winner] += pool * 9 / 10;
-        balances[msg.sender] = pool * 1 / 10;
+        balanceOf[winner] += pool * 9 / 10;
+        balanceOf[msg.sender] = pool * 1 / 10;
         lotteryOpen = false;
         pool=0;
         hasTicket[winner] = false;
@@ -181,5 +188,9 @@ contract Lottery {  //建立合約
 
     function getNumberOfPlayers() public view returns (uint) {
         return players.length;
+    }
+
+    function getTicketCount(address player) public view returns(uint){
+        return ticketCount[player];
     }
 }
